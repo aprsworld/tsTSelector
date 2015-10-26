@@ -224,9 +224,7 @@ const char modbus_auchCRCLo[] = {
 void RCV_ON(void) {
 	// Clear RX buffer. Clear RDA interrupt flag. Clear overrun error flag.
 	while ( kbhit(MODBUS_SERIAL) ) {
-		fprintf(DEBUG,"# reading starting ...");
 		fgetc(MODBUS_SERIAL);
-		fprintf(DEBUG," complete");
 	}
 
 	clear_interrupt(INT_RDA);
@@ -246,13 +244,13 @@ void modbus_init() {
 //	setup_timer_2(T2_DIV_BY_16,249,5);  //~4ms interrupts
 //	setup_timer_0(RTCC_INTERNAL | RTCC_DIV_32 | RTCC_8_BIT); /* ~1.024 ms @ 8 MHz ... 0.686 ms @ 12 MHz */
 
-	fprintf(DEBUG,"# setup_timer_0 starting ...\r\n");
+//	fprintf(DEBUG,"# setup_timer_0 starting ...\r\n");
 	setup_timer_0(T0_INTERNAL | T0_DIV_128 | T0_8_BIT); /* ~4.096 ms @ 8 MHz ... 2.73 ms @ 12 MHz */
-	fprintf(DEBUG,"# setup_timer_0 complete\r\n");
+//	fprintf(DEBUG,"# setup_timer_0 complete\r\n");
 
-	fprintf(DEBUG,"# enable_interrupts(GLOBAL) starting ...\r\n");
+//	fprintf(DEBUG,"# enable_interrupts(GLOBAL) starting ...\r\n");
 	enable_interrupts(GLOBAL);
-	fprintf(DEBUG,"# enable interrupts complete\r\n");
+//	fprintf(DEBUG,"# enable interrupts complete\r\n");
 }
 
 // Purpose:    Start our timeout timer

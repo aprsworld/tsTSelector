@@ -18,122 +18,38 @@ void reset_modbus_stats(void) {
 	current.modbus_last_error=0;
 }
 
-void reset_counters(void) {
-	disable_interrupts(GLOBAL);
-
-	current.pulse_count[0]=0;
-	current.pulse_count[1]=0;
-	current.pulse_count[2]=0;
-
-	/* pulse period is reset in interrupt */
-	current.pulse_min_period[0]=65535;
-	current.pulse_min_period[1]=65535;
-	current.pulse_min_period[2]=65535;
-	
-	current.pulse_max_period[0]=0;
-	current.pulse_max_period[1]=0;
-	current.pulse_max_period[2]=0;
-	
-
-	current.interval_milliseconds=0;
-
-	enable_interrupts(GLOBAL);
-}
-
-void reset_pulse_sum(void) {
-	disable_interrupts(GLOBAL);
-	current.pulse_sum[0]=0;
-	current.pulse_sum[1]=0;
-	current.pulse_sum[2]=0;
-	enable_interrupts(GLOBAL);
-}
-
-int32 get_pulse_sum(int8 ch) {
-	int32 l;
-
-	disable_interrupts(GLOBAL);
-	l=current.pulse_sum[ch];
-	enable_interrupts(GLOBAL);
-
-	return l;
-}
-
 int16 map_modbus(int16 addr) {
-	static u_lblock ps;
-
 	if ( addr >= MIN_EE_REGISTER && addr < MAX_EE_REGISTER ) {
 		return (int16) read_eeprom(addr - MIN_EE_REGISTER);
 	}
 
 	switch ( addr ) {
 		/* counters */
-		case 0:  return (int16) current.pulse_count[0];
-		case 1:  return (int16) current.pulse_period[0];
-		case 2:  return (int16) current.pulse_min_period[0];
-		case 3:  return (int16) current.pulse_max_period[0];
-		case 4:  ps.word=get_pulse_sum(0); return (int16) ps.l[0];
-		case 5:  return (int16) ps.l[1];
-
-		case 6:  return (int16) current.pulse_count[1];
-		case 7:  return (int16) current.pulse_period[1];
-		case 8:  return (int16) current.pulse_min_period[1];
-		case 9:  return (int16) current.pulse_max_period[1];
-		case 10: ps.word=get_pulse_sum(1); return (int16) ps.l[0];
-		case 11: return (int16) ps.l[1];
-
-
-		case 12: return (int16) current.pulse_count[2];
-		case 13: return (int16) current.pulse_period[2];
-		case 14: return (int16) current.pulse_min_period[2];
-		case 15: return (int16) current.pulse_max_period[2];
-		case 16: ps.word=get_pulse_sum(2); return (int16) ps.l[0];
-		case 17: return (int16) ps.l[1];
-
 
 		/* analog channels */
 		/* input voltage */
 		case 18: return (int16) current.adc_buffer[0][current.adc_buffer_index];
 		case 19: return (int16) adc_get(0);
-		case 20: return (int16) current.adc_std_dev[0];
 		/* wind dir 0 */
 		case 21: return (int16) current.adc_buffer[1][current.adc_buffer_index];
 		case 22: return (int16) adc_get(1);
-		case 23: return (int16) current.adc_std_dev[1];
 		/* wind dir 1 */
 		case 24: return (int16) current.adc_buffer[2][current.adc_buffer_index];
 		case 25: return (int16) adc_get(2);
-		case 26: return (int16) current.adc_std_dev[2];
 		/* temperature */
 		case 27: return (int16) current.adc_buffer[3][current.adc_buffer_index];
 		case 28: return (int16) adc_get(3);
-		case 29: return (int16) current.adc_std_dev[3];
 		/* user ADC 0 to 3 */
 		case 30: return (int16) current.adc_buffer[4][current.adc_buffer_index];
 		case 31: return (int16) adc_get(4);
-		case 32: return (int16) current.adc_std_dev[4];
 
 		case 33: return (int16) current.adc_buffer[5][current.adc_buffer_index];
 		case 34: return (int16) adc_get(5);
-		case 35: return (int16) current.adc_std_dev[5];
 
-		case 36: return (int16) current.adc_buffer[6][current.adc_buffer_index];
-		case 37: return (int16) adc_get(6);
-		case 38: return (int16) current.adc_std_dev[6];
-
-		case 39: return (int16) current.adc_buffer[7][current.adc_buffer_index];
-		case 40: return (int16) adc_get(7);
-		case 41: return (int16) current.adc_std_dev[7];
 
 		/* status */
 		case 42: return (int16) current.sequence_number++;
-		case 43: return (int16) current.interval_milliseconds; /* milliseconds since last query */
-		case 44: return (int16) current.uptime_minutes; 
-		case 45: return (int16) current.watchdog_seconds; 
 
-		/* triggers a new measurement */
-		case 46: reset_counters(); return (int16) 0;
-		/* triggers a reset of pulse sum */
-		case 47: reset_pulse_sum(); return (int16) 0;
 		/* modbus statistics */
 		case 48: return (int16) current.modbus_our_packets;
 		case 49: return (int16) current.modbus_other_packets;
@@ -152,10 +68,6 @@ int16 map_modbus(int16 addr) {
 		case 1005: return (int16) 1;
 		case 1006: return (int16) config.modbus_address;
 		case 1007: return (int16) config.adc_sample_ticks;
-		case 1008: return (int16) config.allow_bootload_request;
-		case 1009: return (int16) config.watchdog_seconds_max;
-		case 1010: return (int16) config.pi_offtime_seconds;
-		case 1011: return (int16) config.power_startup;
 
 		/* we should have range checked, and never gotten here */
 		default: return (int16) 65535;
@@ -250,31 +162,6 @@ exception modbus_write_register(int16 address, int16 value) {
 			config.modbus_address=value;
 			break;
 
-		case 1007:
-			/* ADC sample interval */
-			timers.now_adc_reset_count=1;
-			config.adc_sample_ticks=value;
-			break;
-
-		case 1008:
-			/* allow this processor to follow requests of the PIC BOOTLOAD REQUEST line to reset ourselves */
-			if ( value > 1 ) return ILLEGAL_DATA_VALUE;
-			config.allow_bootload_request=value;
-			break;
-
-		case 1009:
-			config.watchdog_seconds_max=value;
-			break;
-
-		case 1010:
-			if ( value < 1 ) return ILLEGAL_DATA_VALUE;
-			config.pi_offtime_seconds=value;
-			break;
-		
-		case 1011:
-			if ( value > 1 ) return ILLEGAL_DATA_VALUE;
-			config.power_startup=value;
-			break;
 		
 		case 1998:
 			/* write default config to EEPROM */
@@ -294,7 +181,8 @@ exception modbus_write_register(int16 address, int16 value) {
 			}
 			current.factory_unlocked=1;
 			/* green LED for 2 seconds */
-			timers.led_on_green=200;
+			timers.led_on_c=200;
+			timers.led_on_d=200;
 			break;
 		default:
 			return ILLEGAL_DATA_ADDRESS;
@@ -323,7 +211,7 @@ void modbus_process(void) {
 				current.modbus_our_packets++;
 	
 			/* green LED for 200 milliseconds */
-			timers.led_on_green=20;
+			timers.led_on_c=20;
 
 			switch(modbus_rx.func) {
 				case FUNC_READ_HOLDING_REGISTERS: /* 3 */
@@ -337,7 +225,7 @@ void modbus_process(void) {
 						current.modbus_last_error=ILLEGAL_DATA_ADDRESS;
 
 						/* red LED for 1 second */
-						timers.led_on_green=0;
+						timers.led_on_d=100;
 					} else {
 						modbus_read_register_response(modbus_rx.func,modbus_rx.address,start_addr,num_registers);
 					}
@@ -354,7 +242,7 @@ void modbus_process(void) {
 						current.modbus_last_error=result;
 
 						/* red LED for 1 second */
-						timers.led_on_green=0;
+						timers.led_on_d=100;
 					}  else {
 						/* no exception, send ack */
 						modbus_write_single_register_rsp(modbus_rx.address,
@@ -377,7 +265,7 @@ void modbus_process(void) {
 							current.modbus_last_error=result;
 	
 							/* red LED for 1 second */
-							timers.led_on_green=0;
+							timers.led_on_d=100;
 			
 							break;
 						}
@@ -396,18 +284,16 @@ void modbus_process(void) {
 					current.modbus_last_error=ILLEGAL_FUNCTION;
 
 					/* red led for 1 second */
-					timers.led_on_green=0;
+					timers.led_on_d=100;
 			}
-			/* reset watchdog seconds now that we are done processing request */
-			current.watchdog_seconds=0;
-
 		} else {
 			/* MODBUS packet for somebody else */
 			if ( current.modbus_other_packets < 65535 )
 				current.modbus_other_packets++;
 
 			/* yellow LED 200 milliseconds */
-			timers.led_on_green=20;
+			timers.led_on_c=20;
+			timers.led_on_d=20;
 		}
 
 	}

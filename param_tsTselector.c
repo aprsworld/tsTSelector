@@ -36,8 +36,11 @@ void write_param_file() {
 }
 
 void write_default_param_file() {
-	/* red LED for 1.5 seconds */
-	timers.led_on_green=150;
+	/* all LEDs for 1.5 seconds */
+	timers.led_on_a=150;
+	timers.led_on_b=150;
+	timers.led_on_c=150;
+	timers.led_on_d=150;
 
 	config.modbus_address=41;
 

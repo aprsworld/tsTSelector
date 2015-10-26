@@ -1,9 +1,9 @@
-#include <18F46K22.h>
-#device ADC=12
+#include <18F26K22.h>
+#device ADC=10
 #device *=16
 
 #include <stdlib.h>
-#FUSES HSM,NOPROTECT,PUT,NOLVP,BROWNOUT,NOMCLR,WDT32768 
+#FUSES HSM,NOPROTECT,PUT,NOLVP,BROWNOUT,NOMCLR,WDT
 #FUSES NOPLLEN, NOFCMEN, NOIESO, NOXINST, NODEBUG, NOPROTECT
 #use delay(clock=12000000, restart_wdt)
 
@@ -31,7 +31,7 @@ Parameters are stored in EEPROM
 #bit RBPU=INTCON2.7
 
 /* UART2 - RS-485 MODBUS network */
-#use rs232(UART2, stream=MODBUS, baud=9600,errors)	
+#use rs232(UART2, stream=MODBUS_SERIAL, baud=9600,errors)	
 
 
 
@@ -39,7 +39,6 @@ Parameters are stored in EEPROM
 #use fast_io(A)
 #use fast_io(B)
 #use fast_io(C)
-#use fast_io(D)
 #use standard_io(E)
 
 #define RS485_DE                 PIN_A4
@@ -47,17 +46,17 @@ Parameters are stored in EEPROM
 #define RS232_RX_NEN             PIN_A6
 #define LED_A                    PIN_C0
 #define LED_B                    PIN_C1
-#define BRIDGE_A                 PIN_C2
+#define BRIDGE_B                 PIN_C2
 #define BRIDGE_A                 PIN_C3
 #define LED_C                    PIN_C4
 #define LED_D                    PIN_C5
 #define SER_TO_TS                PIN_C6
 #define SER_FROM_TS              PIN_C7
 
-#define ROT_SW_1                 PIN_B2
-#define ROT_SW_2                 PIN_B3
-#define ROT_SW_4                 PIN_B4
-#define ROT_SW_8                 PIN_B5
+#define ROTARY_SW_1              PIN_B2
+#define ROTARY_SW_2              PIN_B3
+#define ROTARY_SW_4              PIN_B4
+#define ROTARY_SW_8              PIN_B5
 
 #define SER_TO_NET               PIN_B6
 #define SER_FROM_NET             PIN_B7

@@ -25,6 +25,9 @@ typedef struct {
 	int16 sequence_number;
 
 	int8 factory_unlocked;
+
+	int8 restart_cause;
+	int8 rotary_switch_value;
 } struct_current;
 
 typedef struct {
@@ -48,32 +51,40 @@ struct_time_keep timers;
 
 #include "interrupt_tsTSelector.c"
 
-int8 read_rot_sw(void) {
+int8 read_rotary_switch(void) {
 	int8 value=0;
 
 	/* turn on port b pull up resistors on rotary switch pins */
 	port_b_pullups(0b00111100);
 	delay_ms(1);
 
-	if ( 0 == input(ROT_SW_1) )
+
+	if ( 0 == input(ROTARY_SW_1) )
 		value+=1;
-	if ( 0 == input(ROT_SW_2) )
+	if ( 0 == input(ROTARY_SW_2) )
 		value+=2;
-	if ( 0 == input(ROT_SW_4) )
+	if ( 0 == input(ROTARY_SW_4) )
 		value+=4;
-	if ( 0 == input(ROT_SW_8) )
+	if ( 0 == input(ROTARY_SW_8) )
 		value+=8;
 
-	/* shut off all pullups to save power */.
+	/* shut off all pullups to save power */
 	port_b_pullups(0b00000000);
 
+	return value;
 }
 
 void init() {
-	int8 i;
+	setup_oscillator(OSC_4MHZ);	
+//	setup_wdt(WDT_32); /* 32 second watchdog interval */
 
-	setup_adc_ports(sAN0 | sAN1 | sAN2 | sAN3 | sAN4 | sAN10);
 	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
+	setup_adc_ports(sAN0 | sAN1 | sAN2 | sAN3 | sAN4 | sAN10);
+
+	setup_dac(DAC_OFF);
+	setup_vref(VREF_OFF);
+	setup_spi(SPI_DISABLED);
+
 
 	set_tris_a(0b00101111);
 	set_tris_b(0b10111110);
@@ -92,201 +103,33 @@ void init() {
 	current.sequence_number=0;
 	current.adc_buffer_index=0;
 	current.factory_unlocked=0;
-
-
-	/* one periodic interrupt @ 100uS. Generated from internal 16 MHz clock */
-	/* prescale=16, match=24, postscale=1. Match is 24 because when match occurs, one cycle is lost */
-	// setup_timer_2(T2_DIV_BY_16,24,1); 
-
-	/* one periodic interrupt @ 100uS. Generated from system 12 MHz clock */
-	/* prescale=4, match=74, postscale=1. Match is 74 because when match occurs, one cycle is lost */
-	setup_timer_2(T2_DIV_BY_4,74,1);
-
-	enable_interrupts(INT_TIMER2);
-//	enable_interrupts(INT_RDA2); /* debug cable */
-	/* RDA - PI is turned on in modbus_slave_pcwx's init */
 }
 
+void init_min_power(void) {
+	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
+	
+	init();
+}
 
-void periodic_millisecond(void) {
-	static int8 uptimeticks=0;
-	static int16 adcTicks=0;
-	static int16 ticks=0;
-	/* button debouncing */
-//	static int16 b0_state=0; /* bridge push button */
-//	static int16 b1_state=0; /* reset line from PI */
-	static int16 b2_state=0; /* watchdog line from PI */
-	/* power control */
-	static int16 adcValue; /* updates after each ADC sample run */
+void init_full_speed(void) {
+	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
 
-	timers.now_millisecond=0;
-
-//	fputc('.',DEBUG);
-
-#if 0
-	/* button must be down for 12 milliseconds */
-	b0_state=(b0_state<<1) | !bit_test(timers.port_b,BUTTON_BIT) | 0xe000;
-	if ( b0_state==0xf000) {
-		/* button pressed */
-		current.bridged_uarts = !current.bridged_uarts;
-		fprintf(DEBUG,"# bridged=%u\r\n",current.bridged_uarts);
-	}
-
-	/* if we are in bridged uarts ... only check for button press */
-	if ( current.bridged_uarts ) {
-		return;
-	}
-#endif
-
-#if 0
-	/* reset must be down for 12 milliseconds */
-	b1_state=(b1_state<<1) | !bit_test(timers.port_c,PIC_BOOTLOAD_REQUEST_BIT) | 0xe000;
-	if ( b1_state==0xf000) {
-		/* reset line asserted */
-		if ( config.allow_bootload_request ) {
-			reset_cpu();
-		}
-		/* BUG - I think that bootload request should be high for x milliseconds, rather than low */
-	}
-#endif
-
-	/* watchdog must be down for 12 milliseconds for hit to register */
-	b2_state=(b2_state<<1) | !bit_test(timers.port_c,WATCHDOG_FROM_PI_BIT) | 0xe000;
-	if ( b2_state==0xf000) {
-		/* watchdog hit */
-//		current.watchdog_seconds=0;
-	}
-
-	/* anemometers quit moving */
-	if ( 0xffff == timers.pulse_period[0] )
-				current.pulse_period[0]=0;
-	if ( 0xffff == timers.pulse_period[1] )
-				current.pulse_period[1]=0;
-	if ( 0xffff == timers.pulse_period[2] )
-				current.pulse_period[2]=0;
-
-
-	/* read port_b and c pin states */
-	timers.port_b=port_b;
-	timers.port_c=port_c;
-
-	/* green LED control */
-	if ( current.bridged_uarts ) {
-		/* always on when ports are bridged */
-		output_high(LED_GREEN);
-	} else {
-		/* green LED in Modbus mode */
-		if ( 0==timers.led_on_green ) {
-			output_low(LED_GREEN);
-		} else {
-			output_high(LED_GREEN);
-			timers.led_on_green--;
-		}
-	}
-
-
-
-
-	/* some other random stuff that we don't need to do every cycle in main */
-	if ( current.interval_milliseconds < 65535 ) {
-		current.interval_milliseconds++;
-	}
-
-	/* seconds */
-	ticks++;
-	if ( 1000 == ticks ) {
-		ticks=0;
-
-		/* watchdog power control of pi */
-		if ( current.watchdog_seconds != 65535 ) {
-			current.watchdog_seconds++;
-		}
-
-		/* shut off when:
-			a) watchdog_seconds_max != 0 AND watchdog_seconds is greater than watchdog_seconds_max AND it isn't already off 
-		*/
-		if ( 0 != config.watchdog_seconds_max && current.watchdog_seconds > config.watchdog_seconds_max && 0 == timers.load_off_seconds ) {
-			timers.load_off_seconds=config.pi_offtime_seconds;
-		}
-
-		/* control power to the raspberrry pi load */
-		if ( 0==timers.load_off_seconds ) {
-			output_high(PI_POWER_EN);
-		} else {
-			output_low(PI_POWER_EN);
-			timers.load_off_seconds--;
-
-			if ( 0 == timers.load_off_seconds ) {
-				/* reset watchdog seconds so we can turn back on */
-				current.watchdog_seconds=0;
-			}
-		}
-
-		
-		/* uptime counter */
-		uptimeTicks++;
-		if ( 60 == uptimeTicks ) {
-			uptimeTicks=0;
-			if ( current.uptime_minutes < 65535 ) 
-				current.uptime_minutes++;
-		}
-	}
-
-
-	if ( 65535 == adcValue ) {
-		/* signaled that a new ADC sample was taken and we need to run again */
-		/* read current ADC value */	
-		adcValue=adc_get(0);
-	}
-
-#if 0
-	if ( adcValue > config.power_on_above_adc ) {
-		if ( current.power_on_delay > 0 ) {
-			current.power_on_delay--;
-		} else {
-			current.p_on=1;
-		}
-	} else {
-		current.power_on_delay=config.power_on_above_delay;
-	}
-			
-
-	if ( adcValue < config.power_off_below_adc ) {
-		if ( current.power_off_delay > 0 ) {
-			current.power_off_delay--;
-		} else {
-			current.p_on=0;
-		}
-	} else {
-		current.power_off_delay=config.power_off_below_delay;
-	}
-#endif	
-
-	/* ADC sample counter */
-	if ( timers.now_adc_reset_count ) {
-		timers.now_adc_reset_count=0;
-		adcTicks=0;
-	}
-
-	/* ADC sampling trigger */
-	adcTicks++;
-	if ( adcTicks == config.adc_sample_ticks ) {
-		adcTicks=0;
-		timers.now_adc_sample=1;
-		adcValue=65535; /* signal power control (above) on next pass to resample */
-	}
-
-
-
+	init();
 }
 
 
 void main(void) {
 	int8 i;
 
-	i=restart_cause();
+	current.restart_cause=restart_cause();
+	current.rotary_switch_value=read_rotary_switch();
 
-	init();
+	/* if rotary switch is set to 0, then we come up with RS-485 / Modbus and stay awake */
+	if ( 0 == current.rotary_switch_value ) {
+		init_full_speed();
+	} else {
+		init_min_power();
+	}
 
 	/* read rotary switch ... if pos = 0 then come up full speed, stay awake, and be modbus slave */
 
@@ -300,6 +143,7 @@ void main(void) {
 	/* read set point for rotary switch as -20C + 5*ROTARY SWITCH VALUE */
 
 
+#if 0
 	/* debugging messages sent on RS-485 port ... so we will start transmitting */
 	output_high(RS485_DE);
 
@@ -316,88 +160,42 @@ void main(void) {
 		default: fprintf(DEBUG,"unknown!");
 	}
 	fprintf(DEBUG,"\r\n");
+#endif
 
-	fprintf(DEBUG,"# read_param_file() starting ...");
+//	fprintf(DEBUG,"# read_param_file() starting ...");
 	read_param_file();
-	fprintf(DEBUG," complete\r\n");
+//	fprintf(DEBUG," complete\r\n");
 
 
 	if ( config.modbus_address != 255 && config.modbus_address > 127 ) {
-		fprintf(DEBUG,"# write_default_param_file() starting ...");
+//		fprintf(DEBUG,"# write_default_param_file() starting ...");
 		write_default_param_file();
-		fprintf(DEBUG," complete\r\n");
+//		fprintf(DEBUG," complete\r\n");
 	}
 
 	/* start Modbus slave */
 	setup_uart(TRUE);
 	/* modbus_init turns on global interrupts */
-	fprintf(DEBUG,"# modbus_init() starting ...");
+//	fprintf(DEBUG,"# modbus_init() starting ...");
 	modbus_init();
-	fprintf(DEBUG," complete\r\n");
-
-	fprintf(DEBUG,"# bridged_uarts=%u\r\n",current.bridged_uarts);
+//	fprintf(DEBUG," complete\r\n");
 
 	/* Prime ADC filter */
 	for ( i=0 ; i<30 ; i++ ) {
 		adc_update();
 	}
 
-	/* set power switch to initial state */
-	current.p_on=config.power_startup;
-
 
 	/* shut off RS-485 transmit once transmit buffer is empty */
-	while ( ! TRMT2 )
-		;
-	output_low(RS485_DE);
-	output_low(RS485_NRE);
+//	while ( ! TRMT2 )
+//		;
+//	output_low(RS485_DE);
 	/* done with RS-485 port startup message */
 
 
 	for ( ; ; ) {
 		restart_wdt();
 
-#if 0
-		if ( current.bridged_uarts ) {
-			disable_interrupts(INT_TIMER2);
-			if ( kbhit(DEBUG) ) {
-				fputc(fgetc(DEBUG),MODBUS_SERIAL);
-			}
-
-			if ( !bit_test(timers.port_b,BUTTON_BIT) ) {
-				current.bridged_uarts=0;
-				enable_interrupts(INT_TIMER2);
-			}
-
-			continue;
-		} 
-#endif
-
-		if ( timers.now_millisecond ) {
-			periodic_millisecond();
-		}
-
-
-		if ( timers.now_adc_sample ) {
-			timers.now_adc_sample=0;
-			adc_update();
-		}
-
-//		if ( ! current.bridged_uarts ) {
-			modbus_process();
-//		}
-
+		modbus_process();
 	}
-}
-
-void init(void) {
-	
-	
-}
-
-
-void main(void) {
-	
-	
-	
 }
