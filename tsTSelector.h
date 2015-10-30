@@ -3,9 +3,9 @@
 #device *=16
 
 #include <stdlib.h>
-#FUSES HSM,NOPROTECT,PUT,NOLVP,BROWNOUT,NOMCLR,WDT
+#FUSES INTRC_IO,NOPROTECT,PUT,NOLVP,BROWNOUT,NOMCLR,WDT
 #FUSES NOPLLEN, NOFCMEN, NOIESO, NOXINST, NODEBUG, NOPROTECT
-#use delay(clock=12000000, restart_wdt)
+#use delay(clock=4000000, restart_wdt)
 
 /* 
 Parameters are stored in EEPROM
@@ -36,9 +36,9 @@ Parameters are stored in EEPROM
 
 
 
-#use fast_io(A)
-#use fast_io(B)
-#use fast_io(C)
+#use standard_io(A)
+#use standard_io(B)
+#use standard_io(C)
 #use standard_io(E)
 
 #define RS485_DE                 PIN_A4

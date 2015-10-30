@@ -69,7 +69,7 @@ int8 read_rotary_switch(void) {
 		value+=8;
 
 	/* shut off all pullups to save power */
-	port_b_pullups(0b00000000);
+//	port_b_pullups(0b00000000);
 
 	return value;
 }
@@ -123,6 +123,67 @@ void main(void) {
 
 	current.restart_cause=restart_cause();
 	current.rotary_switch_value=read_rotary_switch();
+
+
+	/* off */
+	output_low(BRIDGE_A);
+	output_low(BRIDGE_B);
+	delay_ms(500);
+	restart_wdt();
+
+	/* one direction */
+	output_high(BRIDGE_A);
+	output_low(BRIDGE_B);
+	delay_ms(100);
+	restart_wdt();
+
+	/* off */
+	output_high(BRIDGE_A);
+	output_high(BRIDGE_B);
+	delay_ms(500);
+	restart_wdt();
+
+	/* other direction */
+	output_low(BRIDGE_A);
+	output_high(BRIDGE_B);
+	delay_ms(100);
+	restart_wdt();
+
+	/* off */
+	output_low(BRIDGE_A);
+	output_low(BRIDGE_B);
+	delay_ms(500);
+	restart_wdt();
+
+	for ( ; ; ) {
+//		current.rotary_switch_value=read_rotary_switch();
+
+		output_bit(LED_A,input(ROTARY_SW_1));
+		output_bit(LED_B,input(ROTARY_SW_2));
+		output_bit(LED_C,input(ROTARY_SW_4));
+		output_bit(LED_D,input(ROTARY_SW_8));
+
+		restart_wdt();
+	}
+
+#if 0
+	output_high(LED_A);
+	delay_ms(500);
+	restart_wdt();
+
+	output_high(LED_B);
+	delay_ms(500);
+	restart_wdt();
+
+	output_high(LED_C);
+	delay_ms(500);
+	restart_wdt();
+
+	output_high(LED_D);
+	delay_ms(500);
+	restart_wdt();
+#endif
+
 
 	/* if rotary switch is set to 0, then we come up with RS-485 / Modbus and stay awake */
 	if ( 0 == current.rotary_switch_value ) {
