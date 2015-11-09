@@ -124,6 +124,13 @@ void main(void) {
 	current.restart_cause=restart_cause();
 	current.rotary_switch_value=read_rotary_switch();
 
+	/* turn on RS-232 port */
+	output_low(RS232_RX_NEN);
+	output_high(RS232_TX_EN);
+	delay_ms(10);
+	fprintf(STREAM_TRISTAR,"# tsTSelector.c %s\r\n",__DATE__);
+
+
 
 	/* off */
 	output_low(BRIDGE_A);

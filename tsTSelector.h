@@ -17,7 +17,7 @@ Parameters are stored in EEPROM
 
 
 /* UART1 - connection to two TriStar charge controllers */
-#use rs232(UART1,stream=TRISTAR,baud=9600,xmit=PIN_C6,rcv=PIN_C7,errors)	
+#use rs232(UART1,stream=STREAM_TRISTAR,baud=9600,xmit=PIN_C6,rcv=PIN_C7,errors)	
 
 
 #byte TXSTA=GETENV("SFR:txsta1")
