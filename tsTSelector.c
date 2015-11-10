@@ -116,6 +116,18 @@ void contactor_on(void) {
 	}
 }
 
+void dump_to_internal(void) {
+	/* enable internal dump load tristar (modbus address=1) */
+	/* disable external dump load tristar (modbus address=2) */
+	fprintf(STREAM_TRISTAR,"# dumping to internal\r\n");
+}
+
+void dump_to_external(void) {
+	/* enable external dump load tristar (modbus address=2) */
+	/* disable internal dump load tristar (modbus address=1) */
+	fprintf(STREAM_TRISTAR,"# dumping to external\r\n");
+}
+
 
 void init() {
 	setup_oscillator(OSC_4MHZ);	
@@ -154,6 +166,7 @@ void init() {
 void main(void) {
 	int8 i;
 	int16 adc;
+	int16 tSet;
 
 	/* record restart cause before it gets lost */
 	current.restart_cause=restart_cause();
@@ -164,165 +177,58 @@ void main(void) {
 	/* turn on blue LED (D6) */
 	output_high(LED_A);
 
-	/* read parameter file */
-	read_param_file();
 
-	/* read input voltage */
-	adc=read_adc_average16(4);
-
-	if ( adc > config.v_contactor_on_above ) {
-		contactor_on();
-	
-		/* now check temperatures and enable / disable tristars */
-
-		/* read rotary switch */
-		current.rotary_switch_value=read_rotary_switch();
-
-	}  else if ( adc < config.v_contactor_off_below ) {
-		contactor_off();
-	}
-	
-	output_low(LED_A);
-	sleep();
+	/* hard coded settings */
+	set_config();
 
 
-#if 1
 	/* turn on RS-232 port */
 	output_low(RS232_RX_NEN);
 	output_high(RS232_TX_EN);
 	delay_ms(10);
 	fprintf(STREAM_TRISTAR,"# tsTSelector.c %s\r\n",__DATE__);
-#endif
+	fprintf(STREAM_TRISTAR,"# config.v_contactor_on_above=%lu\r\n",config.v_contactor_on_above);
+	fprintf(STREAM_TRISTAR,"# config.v_contactor_off_below=%lu\r\n",config.v_contactor_off_below);
 
 
+	/* read input voltage */
+	adc=read_adc_average16(4);
+	fprintf(STREAM_TRISTAR,"# adc=%lu\r\n",adc);
 
+	if ( adc > config.v_contactor_on_above ) {
+		contactor_on();
+		output_high(LED_B); // green
+		output_low(LED_D);  // red
+	
+		/* now check temperatures and enable / disable tristars */
 
-	for ( i=0 ; i<18 ; i++ ) {
-		adc_update();
+		/* read rotary switch and lookup temperature set point */
+		current.rotary_switch_value=read_rotary_switch();
+		tSet=config.t_setpoints[current.rotary_switch_value];
+		fprintf(STREAM_TRISTAR,"# rotarySwitchValue=%u tSet=%lu\r\n",current.rotary_switch_value,tSet);
 
-		fprintf(STREAM_TRISTAR,"# i=%u sw=%u ",i,read_rotary_switch());
-		fprintf(STREAM_TRISTAR,"\r\n");
-#if 1
-		fprintf(STREAM_TRISTAR,"(T3)=%04lu ",adc_get(0));
-		fprintf(STREAM_TRISTAR,"(T2)=%04lu ",adc_get(1));
-		fprintf(STREAM_TRISTAR,"(T1)=%04lu ",adc_get(2));
-		fprintf(STREAM_TRISTAR,"(T0)=%04lu ",adc_get(3));
-		fprintf(STREAM_TRISTAR,"(IN)=%04lu ",adc_get(4));
-		fprintf(STREAM_TRISTAR,"(T4)=%04lu ",adc_get(5));
-		fprintf(STREAM_TRISTAR,"<- filtered \r\n");
+		if ( read_adc_average16(10)<tSet || read_adc_average16(3)<tSet || read_adc_average16(2)<tSet ||  read_adc_average16(1)<tSet || read_adc_average16(0)>tSet ) {
+			dump_to_external();
+		} else {
+			dump_to_internal();
+		}
 
-		set_adc_channel(0); delay_us(10);
-		fprintf(STREAM_TRISTAR,"(T3)=%04lu ",read_adc());
-		set_adc_channel(1); delay_us(10);
-		fprintf(STREAM_TRISTAR,"(T2)=%04lu ",read_adc());
-		set_adc_channel(2); delay_us(10);
-		fprintf(STREAM_TRISTAR,"(T1)=%04lu ",read_adc());
-		set_adc_channel(3); delay_us(10);
-		fprintf(STREAM_TRISTAR,"(T0)=%04lu ",read_adc());
-		set_adc_channel(4); delay_us(10);
-		fprintf(STREAM_TRISTAR,"(IN)=%04lu ",read_adc());
-		set_adc_channel(10); delay_us(10);
-		fprintf(STREAM_TRISTAR,"(T4)=%04lu ",read_adc());
-#endif
-		fprintf(STREAM_TRISTAR,"<- un-filtered\r\n");
-
-		output_bit(LED_A,input(ROTARY_SW_1));
-		output_bit(LED_B,input(ROTARY_SW_2));
-		output_bit(LED_C,input(ROTARY_SW_4));
-		output_bit(LED_D,input(ROTARY_SW_8));
-
-		delay_ms(100);
-
-
-		restart_wdt();
+	}  else if ( adc < config.v_contactor_off_below ) {
+		contactor_off();
+		output_high(LED_D); // red
+		output_low(LED_B);  // green
+	} else {
+		/* in hysteresis region */
+		output_high(LED_D); // red
+		output_high(LED_B); // green
 	}
 
-	fprintf(STREAM_TRISTAR,"# restart_cause()=%u ",current.restart_cause);
-	switch ( current.restart_cause ) {
-		case WDT_TIMEOUT: fprintf(STREAM_TRISTAR,"WDT_TIMEOUT"); break;
-		case MCLR_FROM_SLEEP: fprintf(STREAM_TRISTAR,"MCLR_FROM_SLEEP"); break;
-		case MCLR_FROM_RUN: fprintf(STREAM_TRISTAR,"MCLR_FROM_RUN"); break;
-		case NORMAL_POWER_UP: fprintf(STREAM_TRISTAR,"NORMAL_POWER_UP"); break;
-		case BROWNOUT_RESTART: fprintf(STREAM_TRISTAR,"BROWNOUT_RESTART"); break;
-		case WDT_FROM_SLEEP: fprintf(STREAM_TRISTAR,"WDT_FROM_SLEEP"); break;
-		case RESET_INSTRUCTION: fprintf(STREAM_TRISTAR,"RESET_INSTRUCTION"); break;
-		default: fprintf(STREAM_TRISTAR,"unknown!");
-	}
-	fprintf(STREAM_TRISTAR,"\r\n");
-
+	delay_ms(10);
 	/* turn off RS-232 port */
 	output_high(RS232_RX_NEN);
 	output_low(RS232_TX_EN);
-
+	
+	output_low(LED_A);
 	sleep();
 
-
-
-	/* read rotary switch ... if pos = 0 then come up full speed, stay awake, and be modbus slave */
-
-	/* turn on  and init */
-
-	/* read input voltage and set latching contactor if different than EEPROM value */
-
-	/* if contactor off, sleep */
-
-	/* if contactor on, check temperatures to determine if any exceed set point */
-	/* read set point for rotary switch as -20C + 5*ROTARY SWITCH VALUE */
-
-
-#if 0
-	/* debugging messages sent on RS-485 port ... so we will start transmitting */
-	output_high(RS485_DE);
-
-	fprintf(DEBUG,"# tsTSelector %s\r\n",__DATE__);
-	fprintf(DEBUG,"# restart_cause()=%u ",i);
-	switch ( i ) {
-		case WDT_TIMEOUT: fprintf(DEBUG,"WDT_TIMEOUT"); break;
-		case MCLR_FROM_SLEEP: fprintf(DEBUG,"MCLR_FROM_SLEEP"); break;
-		case MCLR_FROM_RUN: fprintf(DEBUG,"MCLR_FROM_RUN"); break;
-		case NORMAL_POWER_UP: fprintf(DEBUG,"NORMAL_POWER_UP"); break;
-		case BROWNOUT_RESTART: fprintf(DEBUG,"BROWNOUT_RESTART"); break;
-		case WDT_FROM_SLEEP: fprintf(DEBUG,"WDT_FROM_SLEEP"); break;
-		case RESET_INSTRUCTION: fprintf(DEBUG,"RESET_INSTRUCTION"); break;
-		default: fprintf(DEBUG,"unknown!");
-	}
-	fprintf(DEBUG,"\r\n");
-#endif
-
-//	fprintf(DEBUG,"# read_param_file() starting ...");
-	read_param_file();
-//	fprintf(DEBUG," complete\r\n");
-
-
-	if ( config.modbus_address != 255 && config.modbus_address > 127 ) {
-//		fprintf(DEBUG,"# write_default_param_file() starting ...");
-		write_default_param_file();
-//		fprintf(DEBUG," complete\r\n");
-	}
-
-	/* start Modbus slave */
-	setup_uart(TRUE);
-	/* modbus_init turns on global interrupts */
-//	fprintf(DEBUG,"# modbus_init() starting ...");
-	modbus_init();
-//	fprintf(DEBUG," complete\r\n");
-
-	/* Prime ADC filter */
-	for ( i=0 ; i<30 ; i++ ) {
-		adc_update();
-	}
-
-
-	/* shut off RS-485 transmit once transmit buffer is empty */
-//	while ( ! TRMT2 )
-//		;
-//	output_low(RS485_DE);
-	/* done with RS-485 port startup message */
-
-
-	for ( ; ; ) {
-		restart_wdt();
-
-		modbus_process();
-	}
 }

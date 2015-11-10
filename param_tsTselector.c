@@ -35,13 +35,7 @@ void write_param_file() {
 	write_eeprom(PARAM_CRC_ADDRESS,crc);
 }
 
-void write_default_param_file() {
-	/* all LEDs for 1.5 seconds */
-	timers.led_on_a=150;
-	timers.led_on_b=150;
-	timers.led_on_c=150;
-	timers.led_on_d=150;
-
+void set_config(void) {
 	config.modbus_address=41;
 
 
@@ -68,8 +62,31 @@ void write_default_param_file() {
 	config.t_setpoints[14]=238; // 55C
 	config.t_setpoints[15]=512; // user defined - default to 25C
 
-	config.v_contactor_on_above=461;  // 13.50 volts
-	config.v_contactor_off_below=444; // 13.00 volts
+	config.v_contactor_on_above=395;  // 13.50 volts
+	config.v_contactor_off_below=380; // 13.00 volts
+
+}
+
+void write_default_param_file() {
+	/* all LEDs for 1.5 seconds */
+#if 0
+	timers.led_on_a=150;
+	timers.led_on_b=150;
+	timers.led_on_c=150;
+	timers.led_on_d=150;
+#else
+	output_high(LED_A);
+	output_high(LED_B);
+	output_high(LED_C);
+	output_high(LED_D);
+	delay_ms(1500);
+	output_low(LED_A);
+	output_low(LED_B);
+	output_low(LED_C);
+	output_low(LED_D);
+#endif
+
+	set_config();
 
 	/* write them so next time we use from EEPROM */
 	write_param_file();
