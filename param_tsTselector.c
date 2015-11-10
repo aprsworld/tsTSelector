@@ -50,6 +50,27 @@ void write_default_param_file() {
 
 	config.adc_sample_ticks=20;
 
+
+	config.t_setpoints[0]=905;  // -15C
+	config.t_setpoints[1]=871;  // -10C
+	config.t_setpoints[2]=832;  // -5C
+	config.t_setpoints[3]=786;  // 0C
+	config.t_setpoints[4]=736;  // 5C
+	config.t_setpoints[5]=683;  // 10C
+	config.t_setpoints[6]=626;  // 15C
+	config.t_setpoints[7]=569;  // 20C
+	config.t_setpoints[8]=512;  // 25C
+	config.t_setpoints[9]=457;  // 30C
+	config.t_setpoints[10]=405; // 35C
+	config.t_setpoints[11]=357; // 40C
+	config.t_setpoints[12]=313; // 45C
+	config.t_setpoints[13]=273; // 50C
+	config.t_setpoints[14]=238; // 55C
+	config.t_setpoints[15]=512; // user defined - default to 25C
+
+	config.v_contactor_on_above=461;  // 13.50 volts
+	config.v_contactor_off_below=444; // 13.00 volts
+
 	/* write them so next time we use from EEPROM */
 	write_param_file();
 

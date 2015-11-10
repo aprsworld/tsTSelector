@@ -3,17 +3,24 @@
 #device *=16
 
 #include <stdlib.h>
-#FUSES INTRC_IO,NOPROTECT,PUT,NOLVP,BROWNOUT,NOMCLR,WDT
+#FUSES INTRC_IO,NOPROTECT,PUT,NOLVP,BROWNOUT,NOMCLR,WDT,WDT2048,BORV29
 #FUSES NOPLLEN, NOFCMEN, NOIESO, NOXINST, NODEBUG, NOPROTECT
 #use delay(clock=4000000, restart_wdt)
 
 /* 
 Parameters are stored in EEPROM
 */
-#define PARAM_CRC_ADDRESS  0x000
+#define PARAM_CRC_ADDRESS  0x002
 #define PARAM_ADDRESS      PARAM_CRC_ADDRESS+2
 
-#define EE_FOR_HOST_ADDRESS 512
+#define EE_CONTACTOR_STATE 0x000
+
+/* 
+initially set contactor state to 0xff which will cause it to be set 
+initially set paramater CRC value to 0xff which will hopefully cause invalid value 
+*/
+
+#rom 0xF00000={0xff,0xff,0xff,0xff} 
 
 
 /* UART1 - connection to two TriStar charge controllers */

@@ -8,6 +8,10 @@ typedef struct {
 	int16 serial_number;
 
 	int16 adc_sample_ticks;
+
+	int16 t_setpoints[16];
+	int16 v_contactor_on_above;
+	int16 v_contactor_off_below;
 } struct_config;
 
 
@@ -74,12 +78,49 @@ int8 read_rotary_switch(void) {
 	return value;
 }
 
+void contactor_off(void) {
+	/* check to see if we need to set */
+	if ( 0 == read_eeprom(EE_CONTACTOR_STATE) ) 
+		return;
+
+	/* energize coil to open contactor for 100 milliseconds */
+	output_high(BRIDGE_A);
+	output_low(BRIDGE_B);
+	delay_ms(100);
+
+	/* de-energize coil */
+	output_high(BRIDGE_A);
+	output_high(BRIDGE_B);
+
+	/* update our EEPROM register with the contactor now being off */
+	write_eeprom(EE_CONTACTOR_STATE,0);
+}
+
+void contactor_on(void) {
+	/* always set on. If we are turning on, then we are going to be dumping power,
+	so we can spend a little making sure the dump loads are on */
+	/* energize coil to open contactor for 100 milliseconds */
+
+	output_low(BRIDGE_A);
+	output_high(BRIDGE_B);
+	delay_ms(100);
+
+	/* de-energize coil */
+	output_high(BRIDGE_A);
+	output_high(BRIDGE_B);
+
+
+	if ( 1 != read_eeprom(EE_CONTACTOR_STATE) ) {
+		/* update our EEPROM register with the contactor now being on, since it wasn't already */
+		write_eeprom(EE_CONTACTOR_STATE,1);
+	}
+}
+
+
 void init() {
 	setup_oscillator(OSC_4MHZ);	
-//	setup_wdt(WDT_32); /* 32 second watchdog interval */
+	setup_wdt(WDT_ON); /* 32 second watchdog interval */
 
-//	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
-//	setup_adc(ADC_CLOCK_DIV_16|ADC_TAD_MUL_4); 
 	setup_adc(ADC_CLOCK_INTERNAL);
 	setup_adc_ports(sAN0 | sAN1 | sAN2 | sAN3 | sAN4 | sAN10, VSS_VDD);
 	ADFM=1; /* right justify ADC results */
@@ -112,13 +153,34 @@ void init() {
 
 void main(void) {
 	int8 i;
+	int16 adc;
 
-
-
+	/* record restart cause before it gets lost */
 	current.restart_cause=restart_cause();
 
+	/* setup hardware */
 	init();
 
+	/* turn on blue LED (D6) */
+	output_high(LED_A);
+
+	/* read parameter file */
+	read_param_file();
+
+	/* read input voltage */
+	adc=read_adc_average16(4);
+
+	if ( adc > config.v_contactor_on_above ) {
+		contactor_on();
+	
+		/* now check temperatures and enable / disable tristars */
+
+	}  else if ( adc < config.v_contactor_off_below ) {
+		contactor_off();
+	}
+	
+
+	/* read rotary switch */
 	current.rotary_switch_value=read_rotary_switch();
 
 #if 1
@@ -130,40 +192,12 @@ void main(void) {
 #endif
 
 
-	/* off */
-	output_low(BRIDGE_A);
-	output_low(BRIDGE_B);
-	delay_ms(500);
-	restart_wdt();
 
-	/* one direction */
-	output_high(BRIDGE_A);
-	output_low(BRIDGE_B);
-	delay_ms(100);
-	restart_wdt();
 
-	/* off */
-	output_high(BRIDGE_A);
-	output_high(BRIDGE_B);
-	delay_ms(500);
-	restart_wdt();
-
-	/* other direction */
-	output_low(BRIDGE_A);
-	output_high(BRIDGE_B);
-	delay_ms(100);
-	restart_wdt();
-
-	/* off */
-	output_low(BRIDGE_A);
-	output_low(BRIDGE_B);
-	delay_ms(500);
-	restart_wdt();
-
-	for ( ; ; ) {
+	for ( i=0 ; i<18 ; i++ ) {
 		adc_update();
 
-		fprintf(STREAM_TRISTAR,"# sw=%u ",read_rotary_switch());
+		fprintf(STREAM_TRISTAR,"# i=%u sw=%u ",i,read_rotary_switch());
 		fprintf(STREAM_TRISTAR,"\r\n");
 #if 1
 		fprintf(STREAM_TRISTAR,"(T3)=%04lu ",adc_get(0));
@@ -172,7 +206,7 @@ void main(void) {
 		fprintf(STREAM_TRISTAR,"(T0)=%04lu ",adc_get(3));
 		fprintf(STREAM_TRISTAR,"(IN)=%04lu ",adc_get(4));
 		fprintf(STREAM_TRISTAR,"(T4)=%04lu ",adc_get(5));
-		fprintf(STREAM_TRISTAR,"<- no filtering\r\n");
+		fprintf(STREAM_TRISTAR,"<- filtered \r\n");
 
 		set_adc_channel(0); delay_us(10);
 		fprintf(STREAM_TRISTAR,"(T3)=%04lu ",read_adc());
@@ -187,7 +221,7 @@ void main(void) {
 		set_adc_channel(10); delay_us(10);
 		fprintf(STREAM_TRISTAR,"(T4)=%04lu ",read_adc());
 #endif
-		fprintf(STREAM_TRISTAR,"<- filtered\r\n");
+		fprintf(STREAM_TRISTAR,"<- un-filtered\r\n");
 
 		output_bit(LED_A,input(ROTARY_SW_1));
 		output_bit(LED_B,input(ROTARY_SW_2));
@@ -200,23 +234,24 @@ void main(void) {
 		restart_wdt();
 	}
 
-#if 0
-	output_high(LED_A);
-	delay_ms(500);
-	restart_wdt();
+	fprintf(STREAM_TRISTAR,"# restart_cause()=%u ",current.restart_cause);
+	switch ( current.restart_cause ) {
+		case WDT_TIMEOUT: fprintf(STREAM_TRISTAR,"WDT_TIMEOUT"); break;
+		case MCLR_FROM_SLEEP: fprintf(STREAM_TRISTAR,"MCLR_FROM_SLEEP"); break;
+		case MCLR_FROM_RUN: fprintf(STREAM_TRISTAR,"MCLR_FROM_RUN"); break;
+		case NORMAL_POWER_UP: fprintf(STREAM_TRISTAR,"NORMAL_POWER_UP"); break;
+		case BROWNOUT_RESTART: fprintf(STREAM_TRISTAR,"BROWNOUT_RESTART"); break;
+		case WDT_FROM_SLEEP: fprintf(STREAM_TRISTAR,"WDT_FROM_SLEEP"); break;
+		case RESET_INSTRUCTION: fprintf(STREAM_TRISTAR,"RESET_INSTRUCTION"); break;
+		default: fprintf(STREAM_TRISTAR,"unknown!");
+	}
+	fprintf(STREAM_TRISTAR,"\r\n");
 
-	output_high(LED_B);
-	delay_ms(500);
-	restart_wdt();
+	/* turn off RS-232 port */
+	output_high(RS232_RX_NEN);
+	output_low(RS232_TX_EN);
 
-	output_high(LED_C);
-	delay_ms(500);
-	restart_wdt();
-
-	output_high(LED_D);
-	delay_ms(500);
-	restart_wdt();
-#endif
+	sleep();
 
 
 
