@@ -32,6 +32,7 @@ typedef struct {
 
 	int8 restart_cause;
 	int8 rotary_switch_value;
+	int16 t_adc[5];
 } struct_current;
 
 typedef struct {
@@ -116,16 +117,101 @@ void contactor_on(void) {
 	}
 }
 
+void modbus_tristar_disable(int8 ch) {
+	output_low(RS232_RX_NEN);
+	output_high(RS232_TX_EN);
+	delay_ms(10);
+
+	/* disable output
+	01,05,00,01,FF,00,DD,FA (slave address=1)
+	02,05,00,01,FF,00,DD,C9 (slave address=2)
+	*/
+	if ( 2 == ch ) {
+		fputc(0x02,STREAM_TRISTAR);
+	} else { 
+		fputc(0x01,STREAM_TRISTAR);
+	}
+	fputc(0x05,STREAM_TRISTAR);
+	fputc(0x00,STREAM_TRISTAR);
+	fputc(0x01,STREAM_TRISTAR);
+	fputc(0xFF,STREAM_TRISTAR);
+	fputc(0x00,STREAM_TRISTAR);
+
+	/* CRC */
+	fputc(0xDD,STREAM_TRISTAR);
+	if ( 2 == ch ) {
+		fputc(0xC9,STREAM_TRISTAR);
+	} else {
+		fputc(0xFA,STREAM_TRISTAR);
+	}
+
+	delay_ms(10);
+	/* turn off RS-232 port */
+	output_high(RS232_RX_NEN);
+	output_low(RS232_TX_EN);
+}
+
+void modbus_tristar_enable(int8 ch) {
+	output_low(RS232_RX_NEN);
+	output_high(RS232_TX_EN);
+	delay_ms(10);
+
+	/* enable output
+	01,05,00,01,00,00,9C,0A (slave address=1)
+	02,05,00,01,00,00,9C,39 (slave address=2)
+	*/
+
+	if ( 2 == ch ) {
+		fputc(0x02,STREAM_TRISTAR);
+	} else {
+		fputc(0x01,STREAM_TRISTAR);
+	}
+
+	fputc(0x05,STREAM_TRISTAR);
+	fputc(0x00,STREAM_TRISTAR);
+	fputc(0x01,STREAM_TRISTAR);
+	fputc(0x00,STREAM_TRISTAR);
+	fputc(0x00,STREAM_TRISTAR);
+	
+	/* CRC */
+	fputc(0x9C,STREAM_TRISTAR);
+	if ( 2 == ch ) {
+		fputc(0x39,STREAM_TRISTAR);
+	} else {
+		fputc(0x0A,STREAM_TRISTAR);
+	}
+
+	delay_ms(10);
+	/* turn off RS-232 port */
+	output_high(RS232_RX_NEN);
+	output_low(RS232_TX_EN);
+}
+
+
 void dump_to_internal(void) {
+	output_high(LED_B); /* left / green LED */
+
 	/* enable internal dump load tristar (modbus address=1) */
+	modbus_tristar_enable(1);
 	/* disable external dump load tristar (modbus address=2) */
-	fprintf(STREAM_TRISTAR,"# dumping to internal\r\n");
+	modbus_tristar_disable(2);
+
+	output_low(LED_B);
+	
+//	fprintf(STREAM_TRISTAR,"# dumping to internal\r\n");
 }
 
 void dump_to_external(void) {
+	output_high(LED_D); /* right / red LED */
+
 	/* enable external dump load tristar (modbus address=2) */
+	modbus_tristar_enable(2);
 	/* disable internal dump load tristar (modbus address=1) */
-	fprintf(STREAM_TRISTAR,"# dumping to external\r\n");
+	modbus_tristar_disable(1);
+
+	output_low(LED_D);
+
+//	fprintf(STREAM_TRISTAR,"# dumping to external\r\n");
 }
 
 
@@ -164,7 +250,6 @@ void init() {
 
 
 void main(void) {
-	int8 i;
 	int16 adc;
 	int16 tSet;
 
@@ -182,6 +267,7 @@ void main(void) {
 	set_config();
 
 
+#if 0
 	/* turn on RS-232 port */
 	output_low(RS232_RX_NEN);
 	output_high(RS232_TX_EN);
@@ -189,25 +275,32 @@ void main(void) {
 	fprintf(STREAM_TRISTAR,"# tsTSelector.c %s\r\n",__DATE__);
 	fprintf(STREAM_TRISTAR,"# config.v_contactor_on_above=%lu\r\n",config.v_contactor_on_above);
 	fprintf(STREAM_TRISTAR,"# config.v_contactor_off_below=%lu\r\n",config.v_contactor_off_below);
-
+#endif
 
 	/* read input voltage */
 	adc=read_adc_average16(4);
-	fprintf(STREAM_TRISTAR,"# adc=%lu\r\n",adc);
+//	fprintf(STREAM_TRISTAR,"# adc=%lu\r\n",adc);
 
 	if ( adc > config.v_contactor_on_above ) {
 		contactor_on();
-		output_high(LED_B); // green
-		output_low(LED_D);  // red
 	
 		/* now check temperatures and enable / disable tristars */
 
 		/* read rotary switch and lookup temperature set point */
 		current.rotary_switch_value=read_rotary_switch();
 		tSet=config.t_setpoints[current.rotary_switch_value];
-		fprintf(STREAM_TRISTAR,"# rotarySwitchValue=%u tSet=%lu\r\n",current.rotary_switch_value,tSet);
+//		fprintf(STREAM_TRISTAR,"# rotarySwitchValue=%u tSet=%lu\r\n",current.rotary_switch_value,tSet);
 
-		if ( read_adc_average16(10)<tSet || read_adc_average16(3)<tSet || read_adc_average16(2)<tSet ||  read_adc_average16(1)<tSet || read_adc_average16(0)>tSet ) {
+		/* read temperatures */
+		current.t_adc[0]=read_adc_average16(3);
+		current.t_adc[1]=read_adc_average16(2);
+		current.t_adc[2]=read_adc_average16(1);
+		current.t_adc[3]=read_adc_average16(0);
+		current.t_adc[4]=read_adc_average16(10);
+
+//		fprintf(STREAM_TRISTAR,"# [0]=%lu [1]=%lu [2]=%lu [3]=%lu [4]=%lu\r\n",current.t_adc[0],current.t_adc[1],current.t_adc[2],current.t_adc[3],current.t_adc[4]);
+
+		if ( current.t_adc[0]<tSet || current.t_adc[1]<tSet || current.t_adc[2]<tSet || current.t_adc[3]<tSet || current.t_adc[4]<tSet ) {
 			dump_to_external();
 		} else {
 			dump_to_internal();
@@ -215,19 +308,15 @@ void main(void) {
 
 	}  else if ( adc < config.v_contactor_off_below ) {
 		contactor_off();
-		output_high(LED_D); // red
-		output_low(LED_B);  // green
-	} else {
-		/* in hysteresis region */
-		output_high(LED_D); // red
-		output_high(LED_B); // green
 	}
 
+#if  0
 	delay_ms(10);
 	/* turn off RS-232 port */
 	output_high(RS232_RX_NEN);
 	output_low(RS232_TX_EN);
-	
+#endif
+
 	output_low(LED_A);
 	sleep();
 
