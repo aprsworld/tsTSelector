@@ -78,18 +78,22 @@ void init() {
 	setup_oscillator(OSC_4MHZ);	
 //	setup_wdt(WDT_32); /* 32 second watchdog interval */
 
-	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
-	setup_adc_ports(sAN0 | sAN1 | sAN2 | sAN3 | sAN4 | sAN10);
+//	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
+//	setup_adc(ADC_CLOCK_DIV_16|ADC_TAD_MUL_4); 
+	setup_adc(ADC_CLOCK_INTERNAL);
+	setup_adc_ports(sAN0 | sAN1 | sAN2 | sAN3 | sAN4 | sAN10, VSS_VDD);
+	ADFM=1; /* right justify ADC results */
 
 	setup_dac(DAC_OFF);
 	setup_vref(VREF_OFF);
 	setup_spi(SPI_DISABLED);
 
 
+#if 0
 	set_tris_a(0b00101111);
 	set_tris_b(0b10111110);
 	set_tris_c(0b10000000);
-
+#endif
 
 	/* data structure initialization */
 	timers.led_on_a=0;
@@ -105,31 +109,25 @@ void init() {
 	current.factory_unlocked=0;
 }
 
-void init_min_power(void) {
-	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
-	
-	init();
-}
-
-void init_full_speed(void) {
-	setup_adc(ADC_CLOCK_DIV_16 | ADC_TAD_MUL_20 );
-
-	init();
-}
-
 
 void main(void) {
 	int8 i;
 
+
+
 	current.restart_cause=restart_cause();
+
+	init();
+
 	current.rotary_switch_value=read_rotary_switch();
 
+#if 1
 	/* turn on RS-232 port */
 	output_low(RS232_RX_NEN);
 	output_high(RS232_TX_EN);
 	delay_ms(10);
 	fprintf(STREAM_TRISTAR,"# tsTSelector.c %s\r\n",__DATE__);
-
+#endif
 
 
 	/* off */
@@ -163,12 +161,41 @@ void main(void) {
 	restart_wdt();
 
 	for ( ; ; ) {
-//		current.rotary_switch_value=read_rotary_switch();
+		adc_update();
+
+		fprintf(STREAM_TRISTAR,"# sw=%u ",read_rotary_switch());
+		fprintf(STREAM_TRISTAR,"\r\n");
+#if 1
+		fprintf(STREAM_TRISTAR,"(T3)=%04lu ",adc_get(0));
+		fprintf(STREAM_TRISTAR,"(T2)=%04lu ",adc_get(1));
+		fprintf(STREAM_TRISTAR,"(T1)=%04lu ",adc_get(2));
+		fprintf(STREAM_TRISTAR,"(T0)=%04lu ",adc_get(3));
+		fprintf(STREAM_TRISTAR,"(IN)=%04lu ",adc_get(4));
+		fprintf(STREAM_TRISTAR,"(T4)=%04lu ",adc_get(5));
+		fprintf(STREAM_TRISTAR,"<- no filtering\r\n");
+
+		set_adc_channel(0); delay_us(10);
+		fprintf(STREAM_TRISTAR,"(T3)=%04lu ",read_adc());
+		set_adc_channel(1); delay_us(10);
+		fprintf(STREAM_TRISTAR,"(T2)=%04lu ",read_adc());
+		set_adc_channel(2); delay_us(10);
+		fprintf(STREAM_TRISTAR,"(T1)=%04lu ",read_adc());
+		set_adc_channel(3); delay_us(10);
+		fprintf(STREAM_TRISTAR,"(T0)=%04lu ",read_adc());
+		set_adc_channel(4); delay_us(10);
+		fprintf(STREAM_TRISTAR,"(IN)=%04lu ",read_adc());
+		set_adc_channel(10); delay_us(10);
+		fprintf(STREAM_TRISTAR,"(T4)=%04lu ",read_adc());
+#endif
+		fprintf(STREAM_TRISTAR,"<- filtered\r\n");
 
 		output_bit(LED_A,input(ROTARY_SW_1));
 		output_bit(LED_B,input(ROTARY_SW_2));
 		output_bit(LED_C,input(ROTARY_SW_4));
 		output_bit(LED_D,input(ROTARY_SW_8));
+
+		delay_ms(100);
+
 
 		restart_wdt();
 	}
@@ -192,12 +219,6 @@ void main(void) {
 #endif
 
 
-	/* if rotary switch is set to 0, then we come up with RS-485 / Modbus and stay awake */
-	if ( 0 == current.rotary_switch_value ) {
-		init_full_speed();
-	} else {
-		init_min_power();
-	}
 
 	/* read rotary switch ... if pos = 0 then come up full speed, stay awake, and be modbus slave */
 

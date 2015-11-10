@@ -79,4 +79,4 @@ typedef union {
 
 #byte port_b=GETENV("SFR:portb")
 #byte port_c=GETENV("SFR:portc")
-
+#BIT ADFM=GETENV("BIT:ADFM") 
