@@ -175,13 +175,16 @@ void main(void) {
 	
 		/* now check temperatures and enable / disable tristars */
 
+		/* read rotary switch */
+		current.rotary_switch_value=read_rotary_switch();
+
 	}  else if ( adc < config.v_contactor_off_below ) {
 		contactor_off();
 	}
 	
+	output_low(LED_A);
+	sleep();
 
-	/* read rotary switch */
-	current.rotary_switch_value=read_rotary_switch();
 
 #if 1
 	/* turn on RS-232 port */
