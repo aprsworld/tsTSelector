@@ -51,10 +51,14 @@ struct_time_keep timers;
 #include "adc_tsTSelector.c"
 #include "param_tsTSelector.c"
 
-#include "modbus_slave_tsTSelector.c"
-#include "modbus_handler_tsTSelector.c"
+// #include "modbus_slave_tsTSelector.c"
+// #include "modbus_handler_tsTSelector.c"
 
-#include "interrupt_tsTSelector.c"
+// #include "interrupt_tsTSelector.c"
+
+
+ #define RS232_DEBUG 1
+
 
 int8 read_rotary_switch(void) {
 	int8 value=0;
@@ -80,40 +84,67 @@ int8 read_rotary_switch(void) {
 }
 
 void contactor_off(void) {
+#ifdef RS232_DEBUG
+	fprintf(STREAM_TRISTAR,"# contactor_off read_eeprom(EE_CONTACTOR_STATE)=%u\r\n",read_eeprom(EE_CONTACTOR_STATE));
+#endif
+
 	/* check to see if we need to set */
 	if ( 0 == read_eeprom(EE_CONTACTOR_STATE) ) 
 		return;
 
+#ifdef RS232_DEBUG
+	fprintf(STREAM_TRISTAR,"---> contactor_off() energizing coil ...");
+#endif
 	/* energize coil to open contactor for 100 milliseconds */
 	output_high(BRIDGE_A);
 	output_low(BRIDGE_B);
+	output_high(LED_C);
 	delay_ms(100);
 
 	/* de-energize coil */
-	output_high(BRIDGE_A);
-	output_high(BRIDGE_B);
+	output_low(BRIDGE_A);
+	output_low(BRIDGE_B);
+	output_low(LED_C);
+#ifdef RS232_DEBUG
+	fprintf(STREAM_TRISTAR," done\r\n");
+#endif
 
 	/* update our EEPROM register with the contactor now being off */
 	write_eeprom(EE_CONTACTOR_STATE,0);
 }
 
 void contactor_on(void) {
+#ifdef RS232_DEBUG
+	fprintf(STREAM_TRISTAR,"# contactor_on read_eeprom(EE_CONTACTOR_STATE)=%u\r\n",read_eeprom(EE_CONTACTOR_STATE));
+#endif
+
 	/* always set on. If we are turning on, then we are going to be dumping power,
 	so we can spend a little making sure the dump loads are on */
-	/* energize coil to open contactor for 100 milliseconds */
+	/* energize coil to close contactor for 100 milliseconds */
 
+#ifdef RS232_DEBUG
+	fprintf(STREAM_TRISTAR,"---> contactor_on() energizing coil ...");
+#endif
 	output_low(BRIDGE_A);
 	output_high(BRIDGE_B);
+	output_high(LED_C);
 	delay_ms(100);
 
 	/* de-energize coil */
-	output_high(BRIDGE_A);
-	output_high(BRIDGE_B);
-
+	output_low(BRIDGE_A);
+	output_low(BRIDGE_B);
+	output_low(LED_C);
+#ifdef RS232_DEBUG
+	fprintf(STREAM_TRISTAR," done\r\n");
+#endif
 
 	if ( 1 != read_eeprom(EE_CONTACTOR_STATE) ) {
 		/* update our EEPROM register with the contactor now being on, since it wasn't already */
 		write_eeprom(EE_CONTACTOR_STATE,1);
+
+#ifdef RS232_DEBUG
+		fprintf(STREAM_TRISTAR,"# contactor_on wrote 1 to EE_CONTACTOR_STATE read_eeprom(EE_CONTACTOR_STATE)=%u\r\n",read_eeprom(EE_CONTACTOR_STATE));
+#endif
 	}
 }
 
@@ -197,8 +228,10 @@ void dump_to_internal(void) {
 	modbus_tristar_disable(2);
 
 	output_low(LED_B);
-	
-//	fprintf(STREAM_TRISTAR,"# dumping to internal\r\n");
+
+#ifdef RS232_DEBUG	
+	fprintf(STREAM_TRISTAR,"# dumping to internal\r\n");
+#endif
 }
 
 void dump_to_external(void) {
@@ -210,8 +243,10 @@ void dump_to_external(void) {
 	modbus_tristar_disable(1);
 
 	output_low(LED_D);
-
-//	fprintf(STREAM_TRISTAR,"# dumping to external\r\n");
+	
+#ifdef RS232_DEBUG	
+	fprintf(STREAM_TRISTAR,"# dumping to external\r\n");
+#endif
 }
 
 
@@ -219,7 +254,8 @@ void init() {
 	setup_oscillator(OSC_4MHZ);	
 	setup_wdt(WDT_ON); /* 32 second watchdog interval */
 
-	setup_adc(ADC_CLOCK_INTERNAL);
+//	setup_adc(ADC_CLOCK_INTERNAL);
+	setup_adc(ADC_CLOCK_DIV_8); 
 	setup_adc_ports(sAN0 | sAN1 | sAN2 | sAN3 | sAN4 | sAN10, VSS_VDD);
 	ADFM=1; /* right justify ADC results */
 
@@ -256,6 +292,8 @@ void main(void) {
 	/* record restart cause before it gets lost */
 	current.restart_cause=restart_cause();
 
+	restart_wdt();
+
 	/* setup hardware */
 	init();
 
@@ -267,19 +305,35 @@ void main(void) {
 	set_config();
 
 
-#if 0
+#ifdef RS232_DEBUG	
 	/* turn on RS-232 port */
 	output_low(RS232_RX_NEN);
 	output_high(RS232_TX_EN);
 	delay_ms(10);
-	fprintf(STREAM_TRISTAR,"# tsTSelector.c %s\r\n",__DATE__);
+	fprintf(STREAM_TRISTAR,"\r\n\r\n# tsTSelector.c %s\r\n",__DATE__);
+
+	fprintf(STREAM_TRISTAR,"# restart_cause()=%u ",current.restart_cause);
+	switch ( current.restart_cause ) {
+		case WDT_TIMEOUT: fprintf(STREAM_TRISTAR,"WDT_TIMEOUT"); break;
+		case MCLR_FROM_SLEEP: fprintf(STREAM_TRISTAR,"MCLR_FROM_SLEEP"); break;
+		case MCLR_FROM_RUN: fprintf(STREAM_TRISTAR,"MCLR_FROM_RUN"); break;
+		case NORMAL_POWER_UP: fprintf(STREAM_TRISTAR,"NORMAL_POWER_UP"); break;
+		case BROWNOUT_RESTART: fprintf(STREAM_TRISTAR,"BROWNOUT_RESTART"); break;
+		case WDT_FROM_SLEEP: fprintf(STREAM_TRISTAR,"WDT_FROM_SLEEP"); break;
+		case RESET_INSTRUCTION: fprintf(STREAM_TRISTAR,"RESET_INSTRUCTION"); break;
+		default: fprintf(STREAM_TRISTAR,"unknown!");
+	}
+	fprintf(STREAM_TRISTAR,"\r\n");
+
 	fprintf(STREAM_TRISTAR,"# config.v_contactor_on_above=%lu\r\n",config.v_contactor_on_above);
 	fprintf(STREAM_TRISTAR,"# config.v_contactor_off_below=%lu\r\n",config.v_contactor_off_below);
 #endif
 
 	/* read input voltage */
 	adc=read_adc_average16(4);
-//	fprintf(STREAM_TRISTAR,"# adc=%lu\r\n",adc);
+#ifdef RS232_DEBUG	
+	fprintf(STREAM_TRISTAR,"# input voltage adc=%lu\r\n",adc);
+#endif
 
 	if ( adc > config.v_contactor_on_above ) {
 		contactor_on();
@@ -289,7 +343,10 @@ void main(void) {
 		/* read rotary switch and lookup temperature set point */
 		current.rotary_switch_value=read_rotary_switch();
 		tSet=config.t_setpoints[current.rotary_switch_value];
-//		fprintf(STREAM_TRISTAR,"# rotarySwitchValue=%u tSet=%lu\r\n",current.rotary_switch_value,tSet);
+
+#ifdef RS232_DEBUG	
+		fprintf(STREAM_TRISTAR,"# rotarySwitchValue=%u tSet=%lu\r\n",current.rotary_switch_value,tSet);
+#endif
 
 		/* read temperatures */
 		current.t_adc[0]=read_adc_average16(3);
@@ -298,7 +355,9 @@ void main(void) {
 		current.t_adc[3]=read_adc_average16(0);
 		current.t_adc[4]=read_adc_average16(10);
 
-//		fprintf(STREAM_TRISTAR,"# [0]=%lu [1]=%lu [2]=%lu [3]=%lu [4]=%lu\r\n",current.t_adc[0],current.t_adc[1],current.t_adc[2],current.t_adc[3],current.t_adc[4]);
+#ifdef RS232_DEBUG	
+		fprintf(STREAM_TRISTAR,"# [0]=%lu [1]=%lu [2]=%lu [3]=%lu [4]=%lu\r\n",current.t_adc[0],current.t_adc[1],current.t_adc[2],current.t_adc[3],current.t_adc[4]);
+#endif
 
 		if ( current.t_adc[0]<tSet || current.t_adc[1]<tSet || current.t_adc[2]<tSet || current.t_adc[3]<tSet || current.t_adc[4]<tSet ) {
 			dump_to_external();
@@ -310,7 +369,7 @@ void main(void) {
 		contactor_off();
 	}
 
-#if  0
+#ifdef RS232_DEBUG	
 	delay_ms(10);
 	/* turn off RS-232 port */
 	output_high(RS232_RX_NEN);
@@ -318,6 +377,15 @@ void main(void) {
 #endif
 
 	output_low(LED_A);
-	sleep();
 
+	/* shut off ADC before going to sleep to save power */
+	setup_adc(ADC_OFF);
+
+
+	/* sleep restarts the watchdog so we should get a relative consistent wakeup */
+	sleep();
+	/* instruction is pre-fetched prior to sleep ... so run a NOP as first new instruction */
+	delay_cycles(1);
+	/* restart the program. WDT from sleep will resume at the next instruction after sleep */
+	reset_cpu();
 }
