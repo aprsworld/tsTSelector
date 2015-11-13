@@ -27,15 +27,6 @@ Parameters are stored in EEPROM
 #define PARAM_CRC_ADDRESS  0x002
 #define PARAM_ADDRESS      PARAM_CRC_ADDRESS+2
 
-#define EE_CONTACTOR_STATE 0x000
-
-/* 
-initially set contactor state to 0xff which will cause it to be set 
-initially set paramater CRC value to 0xff which will hopefully cause invalid value 
-*/
-
-#rom 0xF00000={0xff,0xff,0xff,0xff} 
-
 
 /* UART1 - connection to two TriStar charge controllers */
 #use rs232(UART1,stream=STREAM_TRISTAR,baud=9600,xmit=PIN_C6,rcv=PIN_C7,errors)	
@@ -61,6 +52,8 @@ initially set paramater CRC value to 0xff which will hopefully cause invalid val
 #use standard_io(B)
 #use standard_io(C)
 #use standard_io(E)
+
+#define CYCLES_BEFORE_CONTACTOR_RESET 100
 
 #define RS485_DE                 PIN_A4
 #define RS232_TX_EN              PIN_A7
